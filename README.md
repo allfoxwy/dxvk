@@ -65,13 +65,13 @@ Every in-game cursor would have a different CursorHash. If you are building your
 
 You could get this information via DXVK debug info. Run the game with an environment variable: `DXVK_LOG_LEVEL=info`
 
-Whenever an in-game cursor appear or change, a CursorHash value would be printed to terminal/log-file as
-`info:  Enlarge D3D9 hardware cursor: 2f4f94382e0e5b958fae25559151a1c02aea9ea3`
+Whenever an in-game cursor appear or change, a CursorHash value would be printed to terminal/log-file like 
+`info:  Enlarge D3D9 hardware cursor: d1e69d325ddb16a8`
 
 HotSpot is the clickable spot coordinates on image. It doesn't have to be the center.
 
-For example if you would like (11, 11) be hot spot for cursor `2f4f94382e0e5b958fae25559151a1c02aea9ea3`,
-You could rename your image as `2f4f94382e0e5b958fae25559151a1c02aea9ea3-11,11.png`.
+For example if you would like (12, 34) be hot spot for cursor `d1e69d325ddb16a8`,
+You could rename your image as `d1e69d325ddb16a8-12,34.png`.
 
 
 
@@ -88,18 +88,20 @@ You could rename your image as `2f4f94382e0e5b958fae25559151a1c02aea9ea3-11,11.p
 
 ## Algorithm
 
-This work employs [hqx](https://en.wikipedia.org/wiki/Hqx). Its implementation is from https://github.com/grom358/hqx
+Image upscaling employs [hqx](https://en.wikipedia.org/wiki/Hqx). Its implementation is from https://github.com/grom358/hqx
 
-
+Hash calculation employs [MetroHash64](http://www.jandrewrogers.com/2015/05/27/metrohash/). Its implementation is from https://github.com/jandrewrogers/MetroHash
 
 ## DISCLAIMERS
 
 This work follow DXVK's original Zlib license.
 
-Included [hqx](https://en.wikipedia.org/wiki/Hqx) algorithm code is LGPL.
+Included [hqx](https://en.wikipedia.org/wiki/Hqx) code is LGPL
 Care, it's LGPL.
 
-Included [stb_image](https://github.com/nothings/stb) is public domain.
+Included [MetroHash64](http://www.jandrewrogers.com/2015/05/27/metrohash/) code is Apache License v2.0
+
+Included [stb_image](https://github.com/nothings/stb) code is public domain
 
 It is recommended to build your own .dlls from source code. Downloading arbitrary binary from Internet and apply them onto Azeroth could lead into Burning Legion invasion or lose of your account.
 
