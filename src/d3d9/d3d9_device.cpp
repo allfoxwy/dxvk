@@ -23,10 +23,17 @@
 #include "../util/util_bit.h"
 #include "../util/util_math.h"
 
+#include "../util/hqx/hqx.h"
+
+#include "../util/stb/stb_image.h"
+
+#include "../util/metrohash/metrohash64.h"
+
 #include "d3d9_initializer.h"
 
 #include <algorithm>
 #include <cfloat>
+#include <sstream>
 #ifdef MSC_VER
 #pragma fenv_access (on)
 #endif
@@ -450,7 +457,16 @@ namespace dxvk {
       if( (m_d3d9Options.enlargeHardwareCursor == 2 || m_d3d9Options.enlargeHardwareCursor == 3 || m_d3d9Options.enlargeHardwareCursor == 4)
           && (copyHeight * m_d3d9Options.enlargeHardwareCursor <= HardwareCursorHeight)
           && (copyWidth * m_d3d9Options.enlargeHardwareCursor <= HardwareCursorWidth) ) {
-        std::string hash = Sha1Hash::compute(data, copyPitch * copyHeight).toString();
+
+        uint8_t hashBytes[8];
+        JAndrewRogers::MetroHash64::Hash(data, copyPitch * copyHeight, hashBytes);
+
+        std::stringstream hexString;
+        hexString << std::hex;
+        for (auto const& i: hashBytes) {
+          hexString << std::setw(2) << std::setfill('0') << (int)i;
+        }
+        std::string hash = hexString.str();
         
         Logger::info("Enlarge D3D9 hardware cursor: " + hash);
 

@@ -26,6 +26,8 @@ util_src = files([
   
   'stb/stb_image.cpp',
 
+  'metrohash/metrohash64.cpp',
+
   'sha1/sha1.c',
   'sha1/sha1_util.cpp',
 

@@ -12,6 +12,8 @@
         "iostream": "cpp",
         "filesystem": "cpp",
         "cstddef": "cpp",
-        "type_traits": "cpp"
+        "type_traits": "cpp",
+        "sstream": "cpp",
+        "iomanip": "cpp"
     }
 }
