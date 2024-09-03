@@ -486,6 +486,11 @@ namespace dxvk {
     { R"(\\EDF6\.exe$)", {{
       { "d3d11.enableContextLock",          "True" },
     }} },
+    /* Kena: Bridge of Spirits: intel water       * 
+      flickering issues                           */
+    { R"(\\Kena-Win64-Shipping\.exe$)", {{
+      { "dxgi.hideIntelGpu",                 "True" },
+    }} },
 
     /**********************************************/
     /* D3D9 GAMES                                 */
@@ -595,14 +600,15 @@ namespace dxvk {
     }} },
     /* GTA IV (NVAPI)                             */
     /* Also thinks we're always on Intel          *
-     * and will report/use bad amounts of VRAM.
+     * and will report/use bad amounts of VRAM
+     * if we report more than 128 MB of VRAM.
      * Disabling support for DF texture formats
      * makes the game use a better looking render
      * path for mirrors.
      * Also runs into issues after alt-tabbing.   */
     { R"(\\(GTAIV|EFLC)\.exe$)", {{
       { "d3d9.customVendorId",              "1002" },
-      { "dxgi.emulateUMA",                  "True" },
+      { "dxgi.maxDeviceMemory",             "128" },
       { "d3d9.supportDFFormats",            "False" },
       { "d3d9.deviceLossOnFocusLoss",       "True" },
     }} },
@@ -996,6 +1002,11 @@ namespace dxvk {
     { R"(\\RaccoonCity\.exe$)", {{
       { "d3d9.textureMemory",               "0" },
     }} },
+    /* APB: Reloaded                               *
+     * Fixes frametime jumps when shooting         */
+    { R"(\\APB\.exe$)", {{
+      { "d3d9.cachedDynamicBuffers",        "True" },
+    }} },
 
     /**********************************************/
     /* D3D8 GAMES                                 */
@@ -1130,6 +1141,10 @@ namespace dxvk {
     /* Art of Murder FBI Confidential - CPU perf  */
     { R"(\\Art of Murder - FBI Confidential\\game\.exe$)", {{
       { "d3d9.cachedDynamicBuffers",       "True" },
+    }} },
+    /* Max Payne 1 - Stalls waiting for an index buffer */
+    { R"(\\MaxPayne\.exe$)", {{
+      { "d3d9.allowDirectBufferMapping",    "False" },
     }} },
   }};
 
