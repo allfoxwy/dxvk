@@ -183,8 +183,7 @@ namespace dxvk {
 
   DxvkMemoryAllocator::DxvkMemoryAllocator(DxvkDevice* device)
   : m_device          (device),
-    m_memProps        (device->adapter()->memoryProperties()),
-    m_maxChunkSize    (determineMaxChunkSize(device)) {
+    m_memProps        (device->adapter()->memoryProperties()) {
     for (uint32_t i = 0; i < m_memProps.memoryHeapCount; i++) {
       m_memHeaps[i].properties = m_memProps.memoryHeaps[i];
       m_memHeaps[i].stats      = DxvkMemoryStats { 0, 0 };
@@ -195,6 +194,7 @@ namespace dxvk {
       m_memTypes[i].heapId     = m_memProps.memoryTypes[i].heapIndex;
       m_memTypes[i].memType    = m_memProps.memoryTypes[i];
       m_memTypes[i].memTypeId  = i;
+      m_memTypes[i].chunkSize  = MinChunkSize;
     }
 
     if (device->features().core.features.sparseBinding)
@@ -313,7 +313,10 @@ namespace dxvk {
           VkDeviceSize                      align,
     const DxvkMemoryProperties&             info,
           DxvkMemoryFlags                   hints) {
-    VkDeviceSize chunkSize = pickChunkSize(type->memTypeId, hints);
+    constexpr VkDeviceSize DedicatedAllocationThreshold = 3;
+
+    VkDeviceSize chunkSize = pickChunkSize(type->memTypeId,
+      DedicatedAllocationThreshold * size, hints);
 
     DxvkMemory memory;
 
@@ -323,7 +326,7 @@ namespace dxvk {
 
     // Prefer a dedicated allocation for very large resources in order to
     // reduce fragmentation if a large number of those resources are in use
-    bool wantsDedicatedAllocation = 3 * size >= chunkSize;
+    bool wantsDedicatedAllocation = DedicatedAllocationThreshold * size > chunkSize;
 
     // Try to reuse existing memory as much as possible in case the heap is nearly full
     bool heapBudgedExceeded = 5 * type->heap->stats.memoryUsed + size > 4 * type->heap->properties.size;
@@ -332,12 +335,12 @@ namespace dxvk {
       // Attempt to suballocate from existing chunks first
       for (uint32_t i = 0; i < type->chunks.size() && !memory; i++)
         memory = type->chunks[i]->alloc(info.flags, size, align, hints);
-      
+
       // If no existing chunk can accomodate the allocation, and if a dedicated
       // allocation is not preferred, create a new chunk and suballocate from it
       if (!memory && !wantsDedicatedAllocation) {
         DxvkDeviceMemory devMem;
-        
+
         if (this->shouldFreeEmptyChunks(type->heap, chunkSize))
           this->freeEmptyChunks(type->heap);
 
@@ -349,6 +352,8 @@ namespace dxvk {
           memory = chunk->alloc(info.flags, size, align, hints);
 
           type->chunks.push_back(std::move(chunk));
+
+          adjustChunkSize(type->memTypeId, devMem.memSize, hints);
         }
       }
     }
@@ -489,12 +494,14 @@ namespace dxvk {
   }
 
 
-  VkDeviceSize DxvkMemoryAllocator::pickChunkSize(uint32_t memTypeId, DxvkMemoryFlags hints) const {
+  VkDeviceSize DxvkMemoryAllocator::pickChunkSize(uint32_t memTypeId, VkDeviceSize requiredSize, DxvkMemoryFlags hints) const {
     VkMemoryType type = m_memProps.memoryTypes[memTypeId];
     VkMemoryHeap heap = m_memProps.memoryHeaps[type.heapIndex];
 
-    // Default to a chunk size of 256 MiB
-    VkDeviceSize chunkSize = m_maxChunkSize;
+    VkDeviceSize chunkSize = m_memTypes[memTypeId].chunkSize;
+
+    while (chunkSize < requiredSize && chunkSize < MaxChunkSize)
+      chunkSize <<= 1u;
 
     if (hints.test(DxvkMemoryFlag::Small))
       chunkSize = std::min<VkDeviceSize>(chunkSize, 16 << 20);
@@ -513,11 +520,29 @@ namespace dxvk {
   }
 
 
+  void DxvkMemoryAllocator::adjustChunkSize(
+          uint32_t              memTypeId,
+          VkDeviceSize          allocatedSize,
+          DxvkMemoryFlags       hints) {
+    VkDeviceSize chunkSize = m_memTypes[memTypeId].chunkSize;
+
+    // Don't bump chunk size if we reached the maximum or if
+    // we already were unable to allocate a full chunk.
+    if (chunkSize <= allocatedSize && chunkSize <= m_memTypes[memTypeId].heap->stats.memoryAllocated)
+      m_memTypes[memTypeId].chunkSize = pickChunkSize(memTypeId, chunkSize * 2, DxvkMemoryFlags());
+  }
+
+
   bool DxvkMemoryAllocator::shouldFreeChunk(
     const DxvkMemoryType*       type,
     const Rc<DxvkMemoryChunk>&  chunk) const {
     // Under memory pressure, we should start freeing everything.
     if (this->shouldFreeEmptyChunks(type->heap, 0))
+      return true;
+
+    // Free chunks that are below the current chunk size since it probably
+    // not going to be able to serve enough allocations to be useful.
+    if (chunk->size() < type->chunkSize)
       return true;
 
     // Only keep a small number of chunks of each type around to save memory.
@@ -632,17 +657,6 @@ namespace dxvk {
     Logger::log(typeMask ? LogLevel::Info : LogLevel::Error,
       str::format("Memory type mask for sparse resources: 0x", std::hex, typeMask));
     return typeMask;
-  }
-
-
-  VkDeviceSize DxvkMemoryAllocator::determineMaxChunkSize(
-          DxvkDevice*           device) const {
-    int32_t option = device->config().maxChunkSize;
-
-    if (option <= 0)
-      option = 256;
-
-    return VkDeviceSize(option) << 20;
   }
 
 
