@@ -1627,7 +1627,7 @@ namespace dxvk {
     DxvkFramebufferInfo makeFramebufferInfo(
       const DxvkRenderTargets&      renderTargets);
 
-    void updateFramebuffer();
+    void updateFramebuffer(bool isDraw = false);
     
     void applyRenderTargetLoadLayouts();
 
@@ -1709,6 +1709,8 @@ namespace dxvk {
     bool tryInvalidateDeviceLocalBuffer(
       const Rc<DxvkBuffer>&           buffer,
             VkDeviceSize              copySize);
+
+    bool checkAsyncCompilationCompat();
 
     DxvkGraphicsPipeline* lookupGraphicsPipeline(
       const DxvkGraphicsPipelineShaders&  shaders);
