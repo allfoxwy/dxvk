@@ -3420,7 +3420,7 @@ namespace dxvk {
 
       ctx->bindShader<VK_SHADER_STAGE_GEOMETRY_BIT>(std::move(shader));
       ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, getSWVPBufferSlot(), std::move(bufferView));
-      ctx->pushConstants(sizeof(D3D9RenderStateInfo), sizeof(byteOffset), &byteOffset);
+      ctx->pushData(VK_SHADER_STAGE_GEOMETRY_BIT, 0u, sizeof(byteOffset), &byteOffset);
       ctx->draw(1u, &draw);
       ctx->bindResourceBufferView(VK_SHADER_STAGE_GEOMETRY_BIT, getSWVPBufferSlot(), nullptr);
       ctx->bindShader<VK_SHADER_STAGE_GEOMETRY_BIT>(nullptr);
@@ -6270,7 +6270,8 @@ namespace dxvk {
     EmitCs([
       cData = *constData
     ](DxvkContext* ctx) {
-      ctx->pushConstants(Offset, Length, &cData);
+      // Render state uses the shared push constant block
+      ctx->pushData(VK_SHADER_STAGE_ALL_GRAPHICS, Offset, Length, &cData);
     });
   }
 
