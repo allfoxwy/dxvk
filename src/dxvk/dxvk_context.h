@@ -4,6 +4,8 @@
 #include "dxvk_bind_mask.h"
 #include "dxvk_cmdlist.h"
 #include "dxvk_context_state.h"
+#include "dxvk_descriptor_heap.h"
+#include "dxvk_descriptor_worker.h"
 #include "dxvk_implicit_resolve.h"
 #include "dxvk_latency.h"
 #include "dxvk_objects.h"
@@ -262,12 +264,12 @@ namespace dxvk {
             VkShaderStageFlags    stages,
             uint32_t              slot,
             Rc<DxvkImageView>&&   view) {
-      if (m_resources[slot].bufferView)
+      if (likely(m_resources[slot].imageView != view)) {
         m_resources[slot].bufferView = nullptr;
+        m_resources[slot].imageView = std::move(view);
 
-      m_resources[slot].imageView = std::move(view);
-
-      m_descriptorState.dirtyViews(stages);
+        m_descriptorState.dirtyViews(stages);
+      }
     }
 
     /**
@@ -281,12 +283,12 @@ namespace dxvk {
             VkShaderStageFlags    stages,
             uint32_t              slot,
             Rc<DxvkBufferView>&&  view) {
-      if (m_resources[slot].imageView)
+      if (likely(m_resources[slot].bufferView != view)) {
         m_resources[slot].imageView = nullptr;
+        m_resources[slot].bufferView = std::move(view);
 
-      m_resources[slot].bufferView = std::move(view);
-
-      m_descriptorState.dirtyViews(stages);
+        m_descriptorState.dirtyViews(stages);
+      }
     }
 
     /**
@@ -302,9 +304,11 @@ namespace dxvk {
             VkShaderStageFlags    stages,
             uint32_t              slot,
             Rc<DxvkSampler>&&     sampler) {
-      m_samplers[slot] = std::move(sampler);
+      if (likely(m_samplers[slot] != sampler)) {
+        m_samplers[slot] = std::move(sampler);
 
-      m_descriptorState.dirtySamplers(stages);
+        m_descriptorState.dirtySamplers(stages);
+      }
     }
 
     /**
@@ -1381,6 +1385,8 @@ namespace dxvk {
     Rc<DxvkDescriptorPool>  m_descriptorPool;
     Rc<DxvkDescriptorPoolSet> m_descriptorManager;
 
+    Rc<DxvkResourceDescriptorHeap> m_descriptorHeap;
+
     DxvkBarrierBatch        m_sdmaAcquires;
     DxvkBarrierBatch        m_sdmaBarriers;
     DxvkBarrierBatch        m_initAcquires;
@@ -1399,8 +1405,10 @@ namespace dxvk {
     std::vector<DxvkDeferredClear> m_deferredClears;
     std::array<DxvkDeferredResolve, MaxNumRenderTargets + 1u> m_deferredResolves = { };
 
-    std::vector<VkWriteDescriptorSet> m_descriptorWrites;
-    std::vector<DxvkLegacyDescriptor> m_descriptorInfos;
+    struct {
+      std::vector<VkWriteDescriptorSet> writes;
+      std::vector<DxvkLegacyDescriptor> infos;
+    } m_legacyDescriptors;
 
     std::array<Rc<DxvkSampler>, MaxNumSamplerSlots> m_samplers;
     std::array<DxvkBufferSlice, MaxNumUniformBufferSlots> m_uniformBuffers;
@@ -1412,6 +1420,8 @@ namespace dxvk {
     std::vector<VkImageMemoryBarrier2> m_imageLayoutTransitions;
 
     std::vector<util::DxvkDebugLabel> m_debugLabelStack;
+
+    DxvkDescriptorCopyWorker m_descriptorWorker;
 
     Rc<DxvkLatencyTracker>  m_latencyTracker;
     uint64_t                m_latencyFrameId = 0u;
@@ -1705,10 +1715,19 @@ namespace dxvk {
     void updateSamplerSet(const DxvkPipelineLayout* layout);
 
     template<VkPipelineBindPoint BindPoint>
-    void updateResourceBindings(const DxvkPipelineBindings* layout);
+    bool updateResourceBindings(const DxvkPipelineBindings* layout);
+
+    template<VkPipelineBindPoint BindPoint>
+    void updateDescriptorSetsBindings(const DxvkPipelineBindings* layout);
+
+    template<VkPipelineBindPoint BindPoint>
+    bool updateDescriptorBufferBindings(const DxvkPipelineBindings* layout);
+
+    template<VkPipelineBindPoint BindPoint>
+    void updatePushDataBindings(const DxvkPipelineBindings* layout);
 
     void updateComputeShaderResources();
-    void updateGraphicsShaderResources();
+    bool updateGraphicsShaderResources();
 
     DxvkFramebufferInfo makeFramebufferInfo(
       const DxvkRenderTargets&      renderTargets);
@@ -1747,7 +1766,7 @@ namespace dxvk {
       const Rc<DxvkImage>&          image,
       const VkImageSubresourceRange& subresources);
 
-    bool updateIndexBufferBinding();
+    void updateIndexBufferBinding();
     void updateVertexBufferBindings();
 
     void updateTransformFeedbackBuffers();
@@ -2170,6 +2189,46 @@ namespace dxvk {
     void beginActiveDebugRegions();
 
     void endActiveDebugRegions();
+
+    void submitDescriptorPool(bool endFrame);
+
+    template<VkPipelineBindPoint BindPoint>
+    force_inline void trackUniformBufferBinding(const DxvkShaderDescriptor& binding, const DxvkBufferSlice& slice) {
+      if (BindPoint == VK_PIPELINE_BIND_POINT_COMPUTE || unlikely(slice.buffer()->hasGfxStores())) {
+        accessBuffer(DxvkCmdBuffer::ExecBuffer, slice,
+          util::pipelineStages(binding.getStageMask()), binding.getAccess(), DxvkAccessOp::None);
+      }
+
+      m_cmd->track(slice.buffer(), DxvkAccess::Read);
+    }
+
+    template<VkPipelineBindPoint BindPoint, bool IsWritable>
+    force_inline void trackBufferViewBinding(const DxvkShaderDescriptor& binding, DxvkBufferView& view) {
+      DxvkAccessOp accessOp = IsWritable ? binding.getAccessOp() : DxvkAccessOp::None;
+
+      if (BindPoint == VK_PIPELINE_BIND_POINT_COMPUTE || unlikely(view.buffer()->hasGfxStores())) {
+        accessBuffer(DxvkCmdBuffer::ExecBuffer, view,
+          util::pipelineStages(binding.getStageMask()), binding.getAccess(), accessOp);
+      }
+
+      DxvkAccess access = IsWritable && (binding.getAccess() & vk::AccessWriteMask)
+        ? DxvkAccess::Write : DxvkAccess::Read;
+      m_cmd->track(view.buffer(), access);
+    }
+
+    template<VkPipelineBindPoint BindPoint, bool IsWritable>
+    force_inline void trackImageViewBinding(const DxvkShaderDescriptor& binding, DxvkImageView& view) {
+      DxvkAccessOp accessOp = IsWritable ? binding.getAccessOp() : DxvkAccessOp::None;
+
+      if (BindPoint == VK_PIPELINE_BIND_POINT_COMPUTE || unlikely(view.hasGfxStores())) {
+        accessImage(DxvkCmdBuffer::ExecBuffer, view,
+          util::pipelineStages(binding.getStageMask()), binding.getAccess(), accessOp);
+      }
+
+      DxvkAccess access = IsWritable && (binding.getAccess() & vk::AccessWriteMask)
+        ? DxvkAccess::Write : DxvkAccess::Read;
+      m_cmd->track(view.image(), access);
+    }
 
     static uint32_t computePushDataBlockOffset(uint32_t index) {
       return index ? MaxSharedPushDataSize + MaxPerStagePushDataSize * (index - 1u) : 0u;
