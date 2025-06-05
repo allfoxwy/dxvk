@@ -83,7 +83,7 @@ dxvk_src = [
   'dxvk_descriptor_worker.cpp',
   'dxvk_device.cpp',
   'dxvk_device_filter.cpp',
-  'dxvk_extensions.cpp',
+  'dxvk_device_info.cpp',
   'dxvk_fence.cpp',
   'dxvk_format.cpp',
   'dxvk_framebuffer.cpp',
