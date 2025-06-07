@@ -692,6 +692,20 @@ namespace dxvk {
       ResetState(pPresentationParameters);
       m_implicitSwapchain->DestroyBackBuffers();
       m_autoDepthStencil = nullptr;
+
+      // Unbind all buffers that were still bound to the backend to avoid leaks.
+      EmitCs([](DxvkContext* ctx) {
+        ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
+        for (uint32_t i = 0; i < caps::MaxStreams; i++) {
+          ctx->bindVertexBuffer(i, DxvkBufferSlice(), 0);
+        }
+      });
+
+      // Tests show that regular D3D9 ends the scene in Reset
+      // while D3D9Ex doesn't.
+      // Observed in Empires: Dawn of the Modern World (D3D8)
+      // and the OSU compatibility mode (D3D9Ex).
+      m_flags.clr(D3D9DeviceFlag::InScene);
     } else {
       // Extended devices only reset the bound render targets
       for (uint32_t i = 0; i < caps::MaxSimultaneousRenderTargets; i++) {
@@ -700,7 +714,6 @@ namespace dxvk {
       SetDepthStencilSurface(nullptr);
     }
 
-    m_flags.clr(D3D9DeviceFlag::InScene);
     m_cursor.ResetCursor();
 
     /*
@@ -727,14 +740,6 @@ namespace dxvk {
       }
       return hr;
     }
-
-    // Unbind all buffers that were still bound to the backend to avoid leaks.
-    EmitCs([](DxvkContext* ctx) {
-      ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
-      for (uint32_t i = 0; i < caps::MaxStreams; i++) {
-        ctx->bindVertexBuffer(i, DxvkBufferSlice(), 0);
-      }
-    });
 
     Flush();
     SynchronizeCsThread(DxvkCsThread::SynchronizeAll);
@@ -3839,7 +3844,6 @@ namespace dxvk {
       // D3D9 doesn't actually unbind any vertex buffer when passing null.
       // Operation Flashpoint: Red River relies on this behavior.
       needsUpdate = false;
-      vbo.offset = 0;
     }
 
     if (needsUpdate)
