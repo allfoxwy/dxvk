@@ -15,7 +15,6 @@
 namespace dxvk {
   
   class DxvkDevice;
-  class DxvkStateCache;
   class DxvkPipelineManager;
   class DxvkPipelineWorkers;
 
@@ -225,7 +224,7 @@ namespace dxvk {
             DxvkGraphicsPipelineFlags       flags);
 
     VkPipelineDynamicStateCreateInfo  dyInfo    = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-    std::array<VkDynamicState, 12>    dyStates  = { };
+    std::array<VkDynamicState, 20>    dyStates  = { };
 
     bool eq(const DxvkGraphicsPipelineDynamicState& other) const;
 
@@ -599,7 +598,6 @@ namespace dxvk {
     DxvkDevice*                 m_device;    
     DxvkPipelineManager*        m_manager;
     DxvkPipelineWorkers*        m_workers;
-    DxvkStateCache*             m_stateCache;
     DxvkPipelineStats*          m_stats;
 
     DxvkGraphicsPipelineShaders m_shaders;
@@ -675,9 +673,6 @@ namespace dxvk {
             bool                           trusted) const;
 
     DxvkPipelineLayoutBuilder buildPipelineLayout() const;
-
-    void writePipelineStateToCache(
-      const DxvkGraphicsPipelineStateInfo& state) const;
 
     void logPipelineState(
             LogLevel                       level,
