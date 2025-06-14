@@ -61,7 +61,7 @@ namespace dxvk {
     /* D3D11 GAMES                                */
     /**********************************************/
 
-    /* Batman Arkham Knight - doesn't like intel vendor id 
+    /* Batman Arkham Knight - doesn't like intel vendor id
       (refuses to boot if vendor isn't 0x10de or 0x1002)  */
     { R"(\\BatmanAK\.exe$)", {{
       { "dxgi.hideIntelGpu",                "True" },
@@ -113,10 +113,6 @@ namespace dxvk {
     /* Nioh: Apparently the same as the Atelier games  */
     { R"(\\nioh\.exe$)", {{
       { "d3d9.deferSurfaceCreation",        "True" },
-    }} },
-    /* Anno 2205: Random crashes with state cache */
-    { R"(\\anno2205\.exe$)", {{
-      { "dxvk.enableStateCache",            "False" },
     }} },
     /* Anno 1800: Poor performance without this   */
     { R"(\\Anno1800\.exe$)", {{
@@ -428,12 +424,12 @@ namespace dxvk {
     { R"(\\EDF6\.exe$)", {{
       { "d3d11.enableContextLock",          "True" },
     }} },
-    /* Kena: Bridge of Spirits: intel water       * 
+    /* Kena: Bridge of Spirits: intel water       *
      * flickering issues                          */
     { R"(\\Kena-Win64-Shipping\.exe$)", {{
       { "dxgi.hideIntelGpu",                 "True" },
     }} },
-    /* GTA Definitive Edition trilogy             * 
+    /* GTA Definitive Edition trilogy             *
      * Static ags crash with HDR support          */
     { R"(\\(LibertyCity|ViceCity|SanAndreas)\.exe$)", {{
       { "dxgi.enableUe4Workarounds",        "True" },
@@ -461,6 +457,11 @@ namespace dxvk {
     /* Rocketbirds 2: Ignores row pitch for mapped *
      * images, corrupting intro video              */
     { R"(\\Rocketbirds 2\\Game\.exe$)", {{
+      { "d3d11.disableDirectImageMapping",  "True" },
+    }} },
+    /* LEGO City Undercover                        *
+     * Fixes graphical corruption on cutscenes     */
+    { R"(\\LEGOLCUR_DX11\.exe$)", {{
       { "d3d11.disableDirectImageMapping",  "True" },
     }} },
 
@@ -924,17 +925,17 @@ namespace dxvk {
     }} },
     /* STAR WARS: The Force Unleashed            *
      * Prevents black screen on each alt-tab     */
-    { R"(\\SWTFU\.exe$)", {{ 
+    { R"(\\SWTFU\.exe$)", {{
       { "d3d9.deviceLossOnFocusLoss",       "True" },
     }} },
     /* Fallout New Vegas - Various visual issues *
      * with mods such as New Vegas Reloaded      */
-    { R"(\\FalloutNV\.exe$)", {{ 
+    { R"(\\FalloutNV\.exe$)", {{
       { "d3d9.floatEmulation",              "Strict" },
     }} },
     /* Dungeons and Dragons: Dragonshard         *
      * Massive FPS decreases in some scenes      */
-    { R"(\\Dragonshard\.exe$)", {{ 
+    { R"(\\Dragonshard\.exe$)", {{
       { "d3d9.cachedDynamicBuffers",        "True" },
     }} },
     /* Battle for Middle-earth 2 and expansion   *
