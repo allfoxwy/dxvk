@@ -2910,6 +2910,8 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetClipStatus(const D3DCLIPSTATUS9* pClipStatus) {
+    D3D9DeviceLock lock = LockDevice();
+
     if (unlikely(pClipStatus == nullptr))
       return D3DERR_INVALIDCALL;
 
@@ -2920,6 +2922,8 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetClipStatus(D3DCLIPSTATUS9* pClipStatus) {
+    D3D9DeviceLock lock = LockDevice();
+
     if (unlikely(pClipStatus == nullptr))
       return D3DERR_INVALIDCALL;
 
@@ -3029,26 +3033,72 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetPaletteEntries(UINT PaletteNumber, const PALETTEENTRY* pEntries) {
-    // This succeeds even though we don't advertise support.
+    D3D9DeviceLock lock = LockDevice();
+
+    if (unlikely(pEntries == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    auto texturePalettesIter = m_state.texturePalettes.find(PaletteNumber);
+
+    // if the palette doesn't already exist (likely), create a new element
+    if (likely(texturePalettesIter == m_state.texturePalettes.end())) {
+      // D3D9 documentation: "IDirect3DDevice9::SetPaletteEntries updates all of a palette's
+      // 256 entries. Each entry is a PALETTEENTRY structure of the format D3DFMT_A8R8G8B8."
+      std::array<PALETTEENTRY, PaletteEntryCount> paletteEntry;
+      memcpy(&paletteEntry[0], pEntries, sizeof(PALETTEENTRY) * PaletteEntryCount);
+
+      m_state.texturePalettes.emplace(std::piecewise_construct,
+                                      std::forward_as_tuple(PaletteNumber),
+                                      std::forward_as_tuple(paletteEntry));
+    // if the pallete already exists, update the palette entry array
+    } else {
+      memcpy(&texturePalettesIter->second[0], pEntries, sizeof(PALETTEENTRY) * PaletteEntryCount);
+    }
+
     return D3D_OK;
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetPaletteEntries(UINT PaletteNumber, PALETTEENTRY* pEntries) {
-    // Don't advertise support for this...
-    return D3DERR_INVALIDCALL;
+    D3D9DeviceLock lock = LockDevice();
+
+    if (unlikely(pEntries == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    auto texturePalettesIter = m_state.texturePalettes.find(PaletteNumber);
+
+    if (unlikely(texturePalettesIter == m_state.texturePalettes.end())) {
+      Logger::warn(str::format("D3D9DeviceEx::GetPaletteEntries: Invalid PaletteNumber: ", PaletteNumber));
+      return D3DERR_INVALIDCALL;
+    }
+
+    memcpy(pEntries, &texturePalettesIter->second[0], sizeof(PALETTEENTRY) * PaletteEntryCount);
+
+    return D3D_OK;
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetCurrentTexturePalette(UINT PaletteNumber) {
-    // This succeeds even though we don't advertise support.
+    D3D9DeviceLock lock = LockDevice();
+
+    // TODO: Use the PaletteNumber and coresponding texture palette entries
+    // to translate all paletted textures for all active texture stages.
+    // See: https://learn.microsoft.com/en-us/windows/win32/direct3d9/texture-palettes
+    m_state.texturePaletteNumber = PaletteNumber;
+
     return D3D_OK;
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetCurrentTexturePalette(UINT *PaletteNumber) {
-    // Don't advertise support for this...
-    return D3DERR_INVALIDCALL;
+    D3D9DeviceLock lock = LockDevice();
+
+    if (unlikely(PaletteNumber == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    *PaletteNumber = m_state.texturePaletteNumber;
+
+    return D3D_OK;
   }
 
 
@@ -3085,7 +3135,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetSoftwareVertexProcessing(BOOL bSoftware) {
-    auto lock = LockDevice();
+    D3D9DeviceLock lock = LockDevice();
 
     if (bSoftware && !CanSWVP())
       return D3DERR_INVALIDCALL;
@@ -3100,19 +3150,25 @@ namespace dxvk {
 
 
   BOOL    STDMETHODCALLTYPE D3D9DeviceEx::GetSoftwareVertexProcessing() {
-    auto lock = LockDevice();
+    D3D9DeviceLock lock = LockDevice();
 
     return m_isSWVP;
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetNPatchMode(float nSegments) {
+    D3D9DeviceLock lock = LockDevice();
+
+    m_state.nPatchSegments = nSegments;
+
     return D3D_OK;
   }
 
 
   float   STDMETHODCALLTYPE D3D9DeviceEx::GetNPatchMode() {
-    return 0.0f;
+    D3D9DeviceLock lock = LockDevice();
+
+    return m_state.nPatchSegments;
   }
 
 
@@ -4231,6 +4287,11 @@ namespace dxvk {
 
     if (!std::exchange(s_errorShown, true))
       Logger::warn("D3D9DeviceEx::GetGPUThreadPriority: Stub");
+
+    if (unlikely(pPriority == nullptr))
+      return D3DERR_INVALIDCALL;
+
+    *pPriority = 0;
 
     return D3D_OK;
   }
@@ -8802,6 +8863,11 @@ namespace dxvk {
     for (uint32_t i = 0; i < caps::MaxStreams; i++) {
       SetStreamSource(i, nullptr, 0, 0);
     }
+
+    // In D3D8, this represents the value of D3DRS_PATCHSEGMENTS.
+    // It defaults to 1.0f and is reset as any other render state.
+    if (IsD3D8Compatible())
+      m_state.nPatchSegments = 1.0f;
 
     m_alphaTestEnabled = false;
     m_atocEnabled      = false;
