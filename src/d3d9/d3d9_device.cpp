@@ -6495,12 +6495,12 @@ namespace dxvk {
 
       // In fixed function shaders and SM < 2 we put the type mask
       // into a spec constant to select the used sampler type.
-      uint32_t oldTextureTypes = m_textureSlotTracking.textureType;
+      const uint32_t oldTextureTypes = m_textureSlotTracking.textureType;
+      m_textureSlotTracking.textureType &= ~textureBitMask;
+      m_textureSlotTracking.textureType |=  textureBits;
       if (oldTextureTypes != m_textureSlotTracking.textureType) {
         m_flags.set(D3D9DeviceFlag::DirtyFFPixelShader);
       }
-      m_textureSlotTracking.textureType &= ~textureBitMask;
-      m_textureSlotTracking.textureType |=  textureBits;
     }
 
     if (likely(tex != nullptr)) {
@@ -8866,7 +8866,7 @@ namespace dxvk {
 
     // In D3D8, this represents the value of D3DRS_PATCHSEGMENTS.
     // It defaults to 1.0f and is reset as any other render state.
-    if (IsD3D8Compatible())
+    if (m_isD3D8Compatible)
       m_state.nPatchSegments = 1.0f;
 
     m_alphaTestEnabled = false;
